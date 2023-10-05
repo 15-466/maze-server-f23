@@ -226,7 +226,7 @@ void Scoreboard::update(float elapsed) {
 
 				//let them know:
 				player.gatherer->send_buffer.emplace_back('G');
-				player.gatherer->send_buffer.emplace_back(0);
+				player.gatherer->send_buffer.emplace_back(uint8_t(0));
 			}
 		}
 	}
