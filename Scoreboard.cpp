@@ -502,7 +502,7 @@ void Scoreboard::tell(Connection *connection, std::string const &message) {
 
 	//note: truncated to 255 chars:
 	size_t length = std::min< size_t >(255, message.size());
-	connection->send_buffer.emplace_back(length);
+	connection->send_buffer.emplace_back(uint8_t(length));
 
 	const char *as_chars = message.c_str();
 	connection->send_buffer.insert(connection->send_buffer.end(),

@@ -54,8 +54,8 @@ int main(int argc, char **argv) {
 		}
 
 		std::cout << "Maze:\n";
-		for (auto const &line : maze) {
-			std::cout << "> " << line << '\n';
+		for (auto const &row : maze) {
+			std::cout << "> " << row << '\n';
 		}
 		std::cout.flush();
 	}
