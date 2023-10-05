@@ -1,0 +1,3 @@
+red secret R #ff0000
+green secret G #00ff00
+blue secret B #0000ff
