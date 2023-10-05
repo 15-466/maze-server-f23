@@ -97,10 +97,18 @@ int main(int argc, char **argv) {
 				return 1;
 			}
 
-			//TODO: UTF8, bruv!
-			if (avatar.size() != 1) {
-				std::cerr << "All avatars should be size 1, but '" << avatar << "' is size " << avatar.size() << "!" << std::endl;
-				return 1;
+			uint32_t avatar_codepoint = 0;
+			{ //avatar decode
+				if (avatar.size() == 1 && (avatar[0] & 0x80) == 0x00) {
+					avatar_codepoint = avatar[0];
+				} else {
+					static std::regex hex_unicode("U+[0-9a-fA-F]{4}");
+					std::smatch m;
+					if (!std::regex_match(avatar, m, hex_unicode)) {
+						std::cerr << "All avatars should be low ascii or U+XXXX hex code, but '" << avatar << "' is not!" << std::endl;
+					}
+					avatar_codepoint = std::stoi(avatar.substr(2,4), nullptr, 16);
+				}
 			}
 
 			static std::regex hex_color("#[0-9a-fA-F]{6}");
@@ -112,7 +120,7 @@ int main(int argc, char **argv) {
 			Player player;
 			player.andrewid = andrewid;
 			player.secret = secret;
-			player.avatar = avatar;
+			player.avatar = avatar_codepoint;
 			player.color.r = uint8_t(std::stoi(color.substr(1,2), nullptr, 16));
 			player.color.g = uint8_t(std::stoi(color.substr(3,2), nullptr, 16));
 			player.color.b = uint8_t(std::stoi(color.substr(5,2), nullptr, 16));

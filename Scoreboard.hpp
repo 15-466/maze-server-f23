@@ -16,7 +16,7 @@ struct Player {
 	std::string andrewid;
 	std::string secret;
 
-	std::string avatar;
+	uint32_t avatar = uint8_t('x'); //codepoint of avatar
 	glm::u8vec3 color;
 	glm::u8vec3 background;
 
@@ -44,6 +44,10 @@ struct Player {
 	//current score:
 	uint32_t gems = 0;
 	uint32_t finds = 0;
+	uint32_t score() const {
+		return std::min(49U, gems) + 10 * std::min(5U, finds);
+	}
+	uint64_t timestamp = ~uint64_t(0); //set to highest possible if not connected yet
 
 	//timeout after finds complete:
 	float connect_wait = 0.0f;
@@ -88,6 +92,9 @@ struct Scoreboard : Mode {
 	std::unordered_set< glm::ivec2 > gems;
 	float gem_cooldown = 0.0f;
 
+	std::unordered_map< glm::ivec2, float > find_stars;
+
+	uint64_t timestamp = 0; //to track relative ordering of events
 	Server &server;
 
 	//track active connections:
