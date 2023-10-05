@@ -117,13 +117,13 @@ int main(int argc, char **argv) {
 			player.color.g = uint8_t(std::stoi(color.substr(3,2), nullptr, 16));
 			player.color.b = uint8_t(std::stoi(color.substr(5,2), nullptr, 16));
 
-			if (glm::dot(glm::vec3(player.color), glm::vec3(1.0f)) > 255.0f + 127.0f) {
-				player.background = glm::u8vec3(0x00, 0x00, 0x00);
-			} else {
+			if (player.color.r < 127 && player.color.g < 127 && player.color.b < 127) {
 				player.background = glm::u8vec3(0xff, 0xff, 0xff);
+			} else {
+				player.background = glm::u8vec3(0x00, 0x00, 0x00);
 			}
 
-
+			players.emplace_back(player);
 		}
 	}
 

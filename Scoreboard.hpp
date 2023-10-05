@@ -5,6 +5,9 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
+
+#include <glm/gtx/hash.hpp>
 
 struct Connection;
 struct Server;
@@ -31,6 +34,10 @@ struct Player {
 	ConnectionState seeker_state = Disconnected;
 	glm::ivec2 gatherer_at = glm::ivec2(-1);
 	glm::ivec2 seeker_at = glm::ivec2(-1);
+
+	//used to move at lower-than-full-framerate:
+	float gatherer_cooldown = 0.0f;
+	float seeker_cooldown = 0.0f;
 	
 	void disconnect(Connection *); //call to reset gatherer and/or seeker state on disconnect
 
@@ -66,16 +73,20 @@ struct Scoreboard : Mode {
 	virtual void draw(glm::uvec2 const &drawable_size) override;
 
 	//helpers:
-	glm::ivec2 random_empty() const; //random square with no walls in it
+	glm::ivec2 random_empty() const; //random square with no walls or gems in it
 	bool step(glm::ivec2 *at, glm::ivec2 step); //step, if possible, in the maze
 	void declare_found(Player *player); //declare that seeker and gatherer are in the same place
 
 	//communication helpers:
 	void tell(Connection *connection, std::string const &message); //send a 'T'ell message
 	void disconnect(Connection *connection, std::string const &message); //disconnect a connection with a message
+	void send_view(Connection *connection, glm::ivec2 at); //send a view given a position
 
 	std::vector< std::string > maze;
 	std::vector< Player > players;
+
+	std::unordered_set< glm::ivec2 > gems;
+	float gem_cooldown = 0.0f;
 
 	Server &server;
 

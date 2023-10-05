@@ -13,6 +13,10 @@ const uint32_t IdleTimeout = 60;
 const uint32_t CloseTimeout = 20;
 const uint32_t FindWait = 20;
 
+const float MoveWait = 0.25f;
+const float GemWait = 10.0f;
+const size_t GemMax = 20;
+
 Scoreboard::Scoreboard(Server &server_, std::vector< std::string > const &maze_, std::vector< Player > const &players_) : maze(maze_), players(players_), server(server_) {
 }
 Scoreboard::~Scoreboard() {
@@ -72,8 +76,8 @@ void Scoreboard::update(float elapsed) {
 					}
 					const char *as_chars = reinterpret_cast< const char * >(connection->recv_buffer.data());
 					char role = as_chars[2];
-					std::string secret = std::string(as_chars + 3, as_chars + 8);
-					std::string andrewid = std::string(as_chars + 8, as_chars + 2 + length);
+					std::string secret = std::string(as_chars + 3, as_chars + 9);
+					std::string andrewid = std::string(as_chars + 9, as_chars + 2 + length);
 
 					auto p = std::find_if(players.begin(), players.end(), [&](Player const &player) {
 						return player.andrewid == andrewid;
@@ -93,17 +97,21 @@ void Scoreboard::update(float elapsed) {
 							disconnect(player.gatherer, "Newer gatherer connected.");
 						}
 						info.state = ConnectionInfo::Playing;
+						info.player = &player;
 						player.gatherer = connection;
 						player.gatherer_state = Player::PendingView;
 						player.gatherer_at = random_empty();
+						player.gatherer_cooldown = MoveWait;
 					} else if (role == 's') {
 						if (player.seeker) {
 							disconnect(player.seeker, "Newer seeker connected.");
 						}
 						info.state = ConnectionInfo::Playing;
+						info.player = &player;
 						player.seeker = connection;
 						player.seeker_state = Player::PendingView;
 						player.seeker_at = random_empty();
+						player.seeker_cooldown = MoveWait;
 					} else {
 						disconnect(connection, "Expecting role to be 'g'atherer or 's'eeker, got '" + std::string(&role, 1) + "' instead.");
 						break;
@@ -146,6 +154,7 @@ void Scoreboard::update(float elapsed) {
 							step(&info.player->gatherer_at, direction);
 						}
 						info.player->gatherer_state = Player::PendingView;
+						info.player->gatherer_cooldown = MoveWait;
 					} else if (connection == info.player->seeker) {
 						if (info.player->seeker_state != Player::WaitingMove) {
 							disconnect(connection, "Don't send a 'M'ove unless you got a 'V'iew.");
@@ -156,7 +165,8 @@ void Scoreboard::update(float elapsed) {
 						} else if (direction != glm::ivec2(0)) {
 							step(&info.player->seeker_at, direction);
 						}
-						info.player->gatherer_state = Player::PendingView;
+						info.player->seeker_state = Player::PendingView;
+						info.player->seeker_cooldown = MoveWait;
 					} else {
 						std::cerr << "Connection marked 'Playing' but isn't gatherer or seeker?" << std::endl;
 						disconnect(connection, "(Internal server error; sorry!)");
@@ -202,6 +212,75 @@ void Scoreboard::update(float elapsed) {
 			}
 		}
 	}
+
+	//---------------------------------------------------
+	//game logic (starting new moves etc)
+
+	//collect gems:
+	for (auto &player : players) {
+		if (player.gatherer && player.gatherer_state != Player::Disconnected) {
+			auto f = gems.find(player.gatherer_at);
+			if (f != gems.end()) {
+				player.gems += 1;
+				gems.erase(f);
+
+				//let them know:
+				player.gatherer->send_buffer.emplace_back('G');
+				player.gatherer->send_buffer.emplace_back(0);
+			}
+		}
+	}
+	
+	//spawn a gem:
+	gem_cooldown = std::max(0.0f, gem_cooldown - elapsed);
+	if (gem_cooldown == 0.0f && gems.size() < GemMax) {
+		gem_cooldown = GemWait;
+
+		//find a random spot with no gems, walls, or gatherers:
+		std::unordered_set< glm::ivec2 > gatherers;
+		for (auto const &player : players) {
+			if (player.gatherer && player.gatherer_state != Player::Disconnected) {
+				gatherers.emplace(player.gatherer_at);
+			}
+		}
+
+		static std::mt19937 mt(0x31415926);
+
+		std::vector< glm::ivec2 > empty;
+
+		for (uint32_t y = 0; y < maze.size(); ++y) {
+			for (uint32_t x = 0; x < maze[y].size(); ++x) {
+				if (maze[y][x] == ' ') {
+					if (!gems.count(glm::ivec2(x,y))) {
+						if (!gatherers.count(glm::ivec2(x,y))) {
+							empty.emplace_back(x,y);
+						}
+					}
+				}
+			}
+		}
+
+		if (!empty.empty()) {
+			gems.emplace(empty[mt() % empty.size()]);
+		} else {
+			std::cerr << "No gem spawning -- too full!" << std::endl;
+		}
+	}
+
+	//ask for new moves if got old moves:
+	for (auto &player : players) {
+		player.gatherer_cooldown = std::max(0.0f, player.gatherer_cooldown - elapsed);
+		player.seeker_cooldown = std::max(0.0f, player.seeker_cooldown - elapsed);
+
+		if (player.gatherer && player.gatherer_state == Player::PendingView && player.gatherer_cooldown == 0.0f) {
+			send_view(player.gatherer, player.gatherer_at);
+			player.gatherer_state = Player::WaitingMove;
+		}
+		if (player.seeker && player.seeker_state == Player::PendingView&& player.seeker_cooldown == 0.0f) {
+			send_view(player.seeker, player.seeker_at);
+			player.seeker_state = Player::WaitingMove;
+		}
+	}
 }
 
 void Scoreboard::draw(glm::uvec2 const &drawable_size) {
@@ -242,18 +321,20 @@ void Scoreboard::draw(glm::uvec2 const &drawable_size) {
 	//- - - - - - - -
 
 	{ //copy maze to display:
-
 		glm::ivec2 maze_ul = glm::ivec2(1, display_size.y - 2);
+		auto get_cell = [&](glm::ivec2 mz) -> Cell & {
+			glm::ivec2 px = maze_ul + glm::ivec2(mz.x, -mz.y);
+			static Cell temp;
+			if (0 <= px.x && uint32_t(px.x) < display_size.x
+			 && 0 <= px.y && uint32_t(px.y) < display_size.y) {
+				return display[px.y * display_size.x + px.x];
+			} else {
+				return temp;
+			}
+		};
 		for (uint32_t row = 0; row < maze.size(); ++row) {
-			glm::ivec2 px;
-			px.y = maze_ul.y - int32_t(row);
-			if (!(0 <= px.y && uint32_t(px.y) < display_size.y)) continue;
-
 			for (uint32_t col = 0; col < maze[row].size(); ++col) {
-				px.x = maze_ul.x + int32_t(col);
-				if (!(0 <= px.x && uint32_t(px.x) < display_size.x)) continue;
-
-				Cell &cell = display[px.y * display_size.x + px.x];
+				Cell &cell = get_cell(glm::ivec2(col, row));
 				cell.codepoint = maze[row][col];
 				cell.fg = glm::u8vec3(0x88, 0x88, 0x88);
 				if (maze[row][col] == ' ') {
@@ -263,6 +344,24 @@ void Scoreboard::draw(glm::uvec2 const &drawable_size) {
 				}
 				
 			}
+		}
+
+		//players in maze:
+		for (auto const &player : players) {
+			if (player.gatherer && player.gatherer_state != Player::Disconnected) {
+				Cell &cell = get_cell(player.gatherer_at);
+				cell.codepoint = player.avatar[0];
+				cell.fg = player.color;
+				cell.bg = player.background;
+			}
+		}
+
+		//gems in maze:
+		for (auto const &gem : gems) {
+			Cell &cell = get_cell(gem);
+			cell.codepoint = 0x2666;
+			cell.bg = glm::u8vec3(0x22, 0x22, 0x44);
+			cell.fg = glm::u8vec3(0x44, 0xaa, 0xff);
 		}
 	}
 
@@ -342,7 +441,9 @@ glm::ivec2 Scoreboard::random_empty() const {
 	for (uint32_t y = 0; y < maze.size(); ++y) {
 		for (uint32_t x = 0; x < maze[y].size(); ++x) {
 			if (maze[y][x] == ' ') {
-				empty.emplace_back(x,y);
+				if (!gems.count(glm::ivec2(x,y))) {
+					empty.emplace_back(x,y);
+				}
 			}
 		}
 	}
@@ -447,3 +548,21 @@ void Scoreboard::disconnect(Connection *connection, std::string const &message) 
 	info.idle_time = 0.0f;
 }
 
+void Scoreboard::send_view(Connection *connection, glm::ivec2 at) {
+	auto lookup = [this](glm::ivec2 pos) {
+		if (0 <= pos.y && size_t(pos.y) < maze.size()) {
+			if (0 <= pos.x && size_t(pos.x) < maze[pos.y].size()) {
+				return maze[pos.y][pos.x];
+			}
+		}
+		return '*';
+	};
+
+	connection->send_buffer.emplace_back(uint8_t('V'));
+	connection->send_buffer.emplace_back(9);
+	for (int32_t dy = -1; dy <= 1; dy += 1) {
+		for (int32_t dx = -1; dx <= 1; dx += 1) {
+			connection->send_buffer.emplace_back(lookup(at + glm::ivec2(dx,dy)));
+		}
+	}
+}
