@@ -102,7 +102,7 @@ int main(int argc, char **argv) {
 				if (avatar.size() == 1 && (avatar[0] & 0x80) == 0x00) {
 					avatar_codepoint = avatar[0];
 				} else {
-					static std::regex hex_unicode("U+[0-9a-fA-F]{4}");
+					static std::regex hex_unicode("U\\+[0-9a-fA-F]{4}");
 					std::smatch m;
 					if (!std::regex_match(avatar, m, hex_unicode)) {
 						std::cerr << "All avatars should be low ascii or U+XXXX hex code, but '" << avatar << "' is not!" << std::endl;

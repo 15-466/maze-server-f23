@@ -32,7 +32,7 @@ function closeSeeker() {
 function buildClient(role, onView, onGem, onClose) {
 	let client = new net.Socket();
 	client.connect(parseInt(port), server, function() {
-		console.log(`[${role}] connected`);
+		//console.log(`[${role}] connected`);
 		//send handshake:
 		const data = `${role}${secret}${name}`;
 		client.write('H');
@@ -70,7 +70,7 @@ function buildClient(role, onView, onGem, onClose) {
 	});
 	
 	client.on('close', function() {
-		console.log(`[${role}] server closed connection`);
+		//console.log(`[${role}] server closed connection`);
 		onClose();
 	});
 
@@ -184,7 +184,7 @@ function strategize() {
 			randomGatherer();
 		}
 		if (seeker === null) {
-			randomSeeker(0.1);
+			randomSeeker(0.02);
 		}
 		setTimeout(strategize, 1000);
 	} else if (strat === 'sw') {
@@ -201,4 +201,4 @@ function strategize() {
 	}
 }
 
-strategize();
+setTimeout(strategize, Math.random() * 1000);

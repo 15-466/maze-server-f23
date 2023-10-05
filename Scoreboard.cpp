@@ -9,9 +9,11 @@
 #include <iostream>
 #include <random>
 
+static std::mt19937 mt(0x31415926);
+
 const uint32_t IdleTimeout = 60;
 const uint32_t CloseTimeout = 20;
-const uint32_t FindWait = 2; //6;
+const uint32_t FindWait = 16;
 
 const float MoveWait = 0.25f;
 const float GemWait = 10.0f;
@@ -113,7 +115,7 @@ void Scoreboard::update(float elapsed) {
 						player.gatherer = connection;
 						player.gatherer_state = Player::PendingView;
 						player.gatherer_at = random_empty();
-						player.gatherer_cooldown = MoveWait;
+						player.gatherer_cooldown = MoveWait * (mt() / float(mt.max()) + 0.5f);
 					} else if (role == 's') {
 						if (player.seeker) {
 							disconnect(player.seeker, "Newer seeker connected.");
@@ -123,7 +125,7 @@ void Scoreboard::update(float elapsed) {
 						player.seeker = connection;
 						player.seeker_state = Player::PendingView;
 						player.seeker_at = random_empty();
-						player.seeker_cooldown = MoveWait;
+						player.seeker_cooldown = MoveWait * (mt() / float(mt.max()) + 0.5f);
 					} else {
 						disconnect(connection, "Expecting role to be 'g'atherer or 's'eeker, got '" + std::string(&role, 1) + "' instead.");
 						break;
@@ -260,8 +262,6 @@ void Scoreboard::update(float elapsed) {
 			}
 		}
 
-		static std::mt19937 mt(0x31415926);
-
 		std::vector< glm::ivec2 > empty;
 
 		for (uint32_t y = 0; y < maze.size(); ++y) {
@@ -315,7 +315,7 @@ void Scoreboard::draw(glm::uvec2 const &drawable_size) {
 
 	static Font const &font = Font::get_shared("Flexi_IBM_VGA_True.ttf");
 
-	const glm::uvec2 display_size = glm::uvec2(84, 20);
+	const glm::uvec2 display_size = glm::uvec2(84, 25);
 	glm::vec2 char_size = glm::vec2(9.0f * 0.75f, 16.0f);
 
 	glm::mat4 world_to_clip;
@@ -378,6 +378,7 @@ void Scoreboard::draw(glm::uvec2 const &drawable_size) {
 		for (auto const &fs : find_stars) {
 			float amt = fs.second;
 			float amt2 = std::min(1.0f, amt * 2.0f);
+			amt = std::max(0.0f, amt * 1.5f - 0.5f);
 			Cell &cell = get_cell(fs.first);
 			cell.codepoint = 0x263c;
 			cell.fg = glm::u8vec3(uint8_t(0x88 * amt), uint8_t(0xbb * amt), uint8_t(0x22 * amt2)) + glm::u8vec3(0x44);
@@ -416,7 +417,8 @@ void Scoreboard::draw(glm::uvec2 const &drawable_size) {
 			uint32_t sa = a->score();
 			uint32_t sb = b->score();
 			if (sa != sb) return sa > sb;
-			else return a->timestamp < b->timestamp;
+			else if (a->timestamp != b->timestamp) return a->timestamp < b->timestamp;
+			else return a->andrewid < b->andrewid;
 		});
 
 		int32_t y = display_size.y - 1;
@@ -446,6 +448,7 @@ void Scoreboard::draw(glm::uvec2 const &drawable_size) {
 		auto write_string = [&](std::string string, uint32_t width, glm::u8vec3 fg, glm::u8vec3 bg) {
 			string = string.substr(0,width); //truncate
 			while (string.size() < width) string = string + ' '; //pad
+			assert(string.size() == width);
 
 			for (uint32_t i = 0; i < width; ++i) {
 				write(string[i], fg, bg);
@@ -629,7 +632,6 @@ void Scoreboard::draw(glm::uvec2 const &drawable_size) {
 }
 
 glm::ivec2 Scoreboard::random_empty() const {
-	static std::mt19937 mt(0xfeedf00d);
 
 	std::vector< glm::ivec2 > empty;
 
