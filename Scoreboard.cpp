@@ -759,7 +759,7 @@ void Scoreboard::send_view(Connection *connection, glm::ivec2 at) {
 	};
 
 	connection->send_buffer.emplace_back(uint8_t('V'));
-	connection->send_buffer.emplace_back(9);
+	connection->send_buffer.emplace_back(uint8_t(9));
 	for (int32_t dy = -1; dy <= 1; dy += 1) {
 		for (int32_t dx = -1; dx <= 1; dx += 1) {
 			connection->send_buffer.emplace_back(lookup(at + glm::ivec2(dx,dy)));
