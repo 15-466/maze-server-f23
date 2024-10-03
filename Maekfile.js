@@ -50,6 +50,7 @@ if (maek.OS === "windows") {
 } else if (maek.OS === "linux") {
 	maek.options.CPPFlags.push(
 		`-O2`, //optimize
+		`-Wno-dangling-reference`,
 		//include paths for nest libraries:
 		`-I${NEST_LIBS}/SDL2/include/SDL2`, `-D_THREAD_SAFE`, //the output of sdl-config --cflags
 		`-I${NEST_LIBS}/glm/include`,

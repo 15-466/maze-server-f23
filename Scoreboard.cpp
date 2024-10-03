@@ -8,6 +8,7 @@
 
 #include <iostream>
 #include <random>
+#include <algorithm>
 
 static std::mt19937 mt(0x31415926);
 
